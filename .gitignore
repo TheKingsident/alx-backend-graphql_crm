@@ -3,3 +3,4 @@ env/
 __pycache__/
 *.pyo
 *.pyd
+*.sqlite3
