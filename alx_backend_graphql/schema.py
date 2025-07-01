@@ -1,10 +1,22 @@
 import graphene
-from graphene_django.types import DjangoObjectType
+from crm.schema import Query as CRMQuery, Mutation as CRMMutation
 
-class Query(graphene.ObjectType):
+
+class Query(CRMQuery, graphene.ObjectType):
     """
     Root query for the GraphQL API.
     """
     hello = graphene.String(default_value="Hello, GraphQL!")
 
-schema = graphene.Schema(query=Query)
+    def resolve_hello(self, info):
+        return "Hello, GraphQL from CRM!"
+
+
+class Mutation(CRMMutation, graphene.ObjectType):
+    """
+    Root mutation for the GraphQL API.
+    """
+    pass
+
+
+schema = graphene.Schema(query=Query, mutation=Mutation)
