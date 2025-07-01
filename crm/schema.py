@@ -39,8 +39,8 @@ class ProductInput(graphene.InputObjectType):
 
 
 class OrderInput(graphene.InputObjectType):
-    customer_id = graphene.ID(required=True)
-    product_ids = graphene.List(graphene.ID, required=True)
+    customerId = graphene.ID(required=True)  # Changed to match checkpoint format
+    productIds = graphene.List(graphene.ID, required=True)  # Changed to match checkpoint format
     order_date = graphene.DateTime()
 
 
@@ -61,6 +61,12 @@ class CreateCustomerMutation(graphene.Mutation):
 
     def mutate(self, info, input):
         try:
+            # Check if email already exists
+            if Customer.objects.filter(email=input.email).exists():
+                return CreateCustomerMutation(
+                    errors=[ErrorType(field="email", message="Email already exists")]
+                )
+            
             # Validate phone format if provided
             if input.phone:
                 customer = Customer(name=input.name, email=input.email, phone=input.phone)
@@ -78,7 +84,13 @@ class CreateCustomerMutation(graphene.Mutation):
             errors = []
             for field, messages in e.message_dict.items():
                 for message in messages:
-                    errors.append(ErrorType(field=field, message=message))
+                    # Provide user-friendly error messages
+                    if field == 'email' and 'unique' in message.lower():
+                        errors.append(ErrorType(field=field, message="Email already exists"))
+                    elif field == 'phone':
+                        errors.append(ErrorType(field=field, message="Invalid phone format. Use +1234567890 or 123-456-7890"))
+                    else:
+                        errors.append(ErrorType(field=field, message=message))
             return CreateCustomerMutation(errors=errors)
         except Exception as e:
             return CreateCustomerMutation(
@@ -97,37 +109,53 @@ class BulkCreateCustomersMutation(graphene.Mutation):
         customers_created = []
         errors = []
         
-        with transaction.atomic():
-            for i, customer_input in enumerate(input):
-                try:
-                    if customer_input.phone:
-                        customer = Customer(
-                            name=customer_input.name,
-                            email=customer_input.email,
-                            phone=customer_input.phone
-                        )
-                    else:
-                        customer = Customer(
-                            name=customer_input.name,
-                            email=customer_input.email
-                        )
-                    
-                    customer.full_clean()
-                    customer.save()
-                    customers_created.append(customer)
-                    
-                except ValidationError as e:
-                    for field, messages in e.message_dict.items():
-                        for message in messages:
-                            errors.append(ErrorType(
-                                field=f"customer_{i}_{field}",
-                                message=message
-                            ))
-                except Exception as e:
+        # Process each customer individually (not in a single transaction for partial success)
+        for i, customer_input in enumerate(input):
+            try:
+                # Check if email already exists
+                if Customer.objects.filter(email=customer_input.email).exists():
                     errors.append(ErrorType(
-                        field=f"customer_{i}",
-                        message=str(e)
+                        field=f"customer_{i}_email",
+                        message="Email already exists"
                     ))
+                    continue
+                
+                if customer_input.phone:
+                    customer = Customer(
+                        name=customer_input.name,
+                        email=customer_input.email,
+                        phone=customer_input.phone
+                    )
+                else:
+                    customer = Customer(
+                        name=customer_input.name,
+                        email=customer_input.email
+                    )
+                
+                customer.full_clean()
+                customer.save()
+                customers_created.append(customer)
+                
+            except ValidationError as e:
+                for field, messages in e.message_dict.items():
+                    for message in messages:
+                        # Provide user-friendly error messages
+                        if field == 'email' and 'unique' in message.lower():
+                            error_message = "Email already exists"
+                        elif field == 'phone':
+                            error_message = "Invalid phone format. Use +1234567890 or 123-456-7890"
+                        else:
+                            error_message = message
+                        
+                        errors.append(ErrorType(
+                            field=f"customer_{i}_{field}",
+                            message=error_message
+                        ))
+            except Exception as e:
+                errors.append(ErrorType(
+                    field=f"customer_{i}",
+                    message=str(e)
+                ))
         
         return BulkCreateCustomersMutation(customers=customers_created, errors=errors)
 
@@ -154,11 +182,11 @@ class CreateProductMutation(graphene.Mutation):
                     errors=[ErrorType(field="price", message="Price must be positive")]
                 )
             
-            # Validate stock is non-negative
+            # Validate stock is non-negative (allow 0)
             stock = input.stock if input.stock is not None else 0
             if stock < 0:
                 return CreateProductMutation(
-                    errors=[ErrorType(field="stock", message="Stock must be non-negative")]
+                    errors=[ErrorType(field="stock", message="Stock must be non-negative (0 or greater)")]
                 )
             
             product = Product(
@@ -194,22 +222,22 @@ class CreateOrderMutation(graphene.Mutation):
         try:
             # Validate customer exists
             try:
-                customer = Customer.objects.get(id=input.customer_id)
+                customer = Customer.objects.get(id=input.customerId)
             except Customer.DoesNotExist:
                 return CreateOrderMutation(
-                    errors=[ErrorType(field="customer_id", message="Customer does not exist")]
+                    errors=[ErrorType(field="customerId", message="Customer does not exist")]
                 )
             
             # Validate products exist and at least one is selected
-            if not input.product_ids:
+            if not input.productIds:
                 return CreateOrderMutation(
-                    errors=[ErrorType(field="product_ids", message="At least one product must be selected")]
+                    errors=[ErrorType(field="productIds", message="At least one product must be selected")]
                 )
             
             products = []
             invalid_product_ids = []
             
-            for product_id in input.product_ids:
+            for product_id in input.productIds:
                 try:
                     product = Product.objects.get(id=product_id)
                     products.append(product)
@@ -219,7 +247,7 @@ class CreateOrderMutation(graphene.Mutation):
             if invalid_product_ids:
                 return CreateOrderMutation(
                     errors=[ErrorType(
-                        field="product_ids",
+                        field="productIds",
                         message=f"Invalid product IDs: {', '.join(invalid_product_ids)}"
                     )]
                 )
