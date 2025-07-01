@@ -51,6 +51,7 @@ class ErrorType(graphene.ObjectType):
 
 
 # Mutation Response Types
+# class CreateCustomer(graphene.Mutation)
 class CreateCustomerMutation(graphene.Mutation):
     class Arguments:
         input = CustomerInput(required=True)
@@ -313,6 +314,7 @@ class Query(graphene.ObjectType):
 
 # Mutation class
 class Mutation(graphene.ObjectType):
+    #create_customer = CreateCustomerMutation.Field()
     create_customer = CreateCustomerMutation.Field()
     bulk_create_customers = BulkCreateCustomersMutation.Field()
     create_product = CreateProductMutation.Field()
