@@ -314,7 +314,7 @@ class Query(graphene.ObjectType):
 
 # Mutation class
 class Mutation(graphene.ObjectType):
-    #create_customer = CreateCustomerMutation.Field()
+    #create_customer = CreateCustomer.Field()
     create_customer = CreateCustomerMutation.Field()
     bulk_create_customers = BulkCreateCustomersMutation.Field()
     create_product = CreateProductMutation.Field()
