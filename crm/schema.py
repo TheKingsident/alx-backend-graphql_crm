@@ -1,9 +1,11 @@
 import graphene
 from graphene_django.types import DjangoObjectType
+from graphene_django.filter import DjangoFilterConnectionField
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from decimal import Decimal
 from .models import Customer, Product, Order
+from .filters import CustomerFilter, AdvancedCustomerFilter, ProductFilter, AdvancedProductFilter, OrderFilter, AdvancedOrderFilter
 
 
 # Django Object Types
@@ -11,18 +13,27 @@ class CustomerType(DjangoObjectType):
     class Meta:
         model = Customer
         fields = "__all__"
+        # Enable filtering for this type
+        filterset_class = CustomerFilter
+        interfaces = (graphene.relay.Node, )
 
 
 class ProductType(DjangoObjectType):
     class Meta:
         model = Product
         fields = "__all__"
+        # Enable filtering for this type
+        filterset_class = ProductFilter
+        interfaces = (graphene.relay.Node, )
 
 
 class OrderType(DjangoObjectType):
     class Meta:
         model = Order
         fields = "__all__"
+        # Enable filtering for this type
+        filterset_class = OrderFilter
+        interfaces = (graphene.relay.Node, )
 
 
 # Input Types
@@ -277,12 +288,97 @@ class CreateOrderMutation(graphene.Mutation):
 
 # Query class
 class Query(graphene.ObjectType):
+    # Basic queries (existing)
     all_customers = graphene.List(CustomerType)
     all_products = graphene.List(ProductType)
     all_orders = graphene.List(OrderType)
     customer = graphene.Field(CustomerType, id=graphene.ID(required=True))
     product = graphene.Field(ProductType, id=graphene.ID(required=True))
     order = graphene.Field(OrderType, id=graphene.ID(required=True))
+    
+    # NEW: Filtered customer queries
+    # Method 1: Using DjangoFilterConnectionField (Recommended for Relay-style pagination)
+    customers = DjangoFilterConnectionField(CustomerType, filterset_class=CustomerFilter)
+    
+    # NEW: Filtered product queries
+    products = DjangoFilterConnectionField(ProductType, filterset_class=ProductFilter)
+    
+    # NEW: Filtered order queries
+    orders = DjangoFilterConnectionField(OrderType, filterset_class=OrderFilter)
+    
+    # Method 2: Custom filtered query with manual filter arguments
+    filtered_customers = graphene.List(
+        CustomerType,
+        # Filter arguments
+        name=graphene.String(description="Filter by name (case-insensitive partial match)"),
+        email=graphene.String(description="Filter by email (case-insensitive partial match)"),
+        created_at_gte=graphene.DateTime(description="Filter customers created on or after this date"),
+        created_at_lte=graphene.DateTime(description="Filter customers created on or before this date"),
+        phone_pattern=graphene.String(description="Filter by phone pattern (e.g., '+1' for US numbers)"),
+        email_domain=graphene.String(description="Filter by email domain (e.g., 'gmail.com')"),
+        has_phone=graphene.Boolean(description="Filter customers who have/don't have phone numbers"),
+        # Pagination
+        limit=graphene.Int(description="Limit the number of results"),
+        offset=graphene.Int(description="Offset for pagination")
+    )
+    
+    # Method 3: Advanced filtering with ordering
+    advanced_filtered_customers = graphene.List(
+        CustomerType,
+        # Include all filter arguments from AdvancedCustomerFilter
+        name=graphene.String(),
+        email=graphene.String(),
+        created_at_gte=graphene.DateTime(),
+        created_at_lte=graphene.DateTime(),
+        phone_pattern=graphene.String(),
+        email_domain=graphene.String(),
+        has_phone=graphene.Boolean(),
+        ordering=graphene.String(description="Order by field (use '-' for descending, e.g., '-created_at')"),
+        limit=graphene.Int(),
+        offset=graphene.Int()
+    )
+    
+    # NEW: Product filtering queries
+    filtered_products = graphene.List(
+        ProductType,
+        # Filter arguments for products
+        name=graphene.String(description="Filter by product name (case-insensitive partial match)"),
+        price_gte=graphene.Float(description="Filter products with price greater than or equal to this value"),
+        price_lte=graphene.Float(description="Filter products with price less than or equal to this value"),
+        stock=graphene.Int(description="Filter products with exact stock quantity"),
+        stock_gte=graphene.Int(description="Filter products with stock greater than or equal to this value"),
+        stock_lte=graphene.Int(description="Filter products with stock less than or equal to this value"),
+        low_stock=graphene.Int(description="Filter products with stock below this threshold"),
+        out_of_stock=graphene.Boolean(description="Filter products that are out of stock"),
+        in_stock=graphene.Boolean(description="Filter products that are in stock"),
+        price_category=graphene.String(description="Filter by price category (budget, mid-range, premium, luxury)"),
+        # Pagination
+        limit=graphene.Int(description="Limit the number of results"),
+        offset=graphene.Int(description="Offset for pagination")
+    )
+    
+    # NEW: Order filtering queries
+    filtered_orders = graphene.List(
+        OrderType,
+        # Filter arguments for orders
+        total_amount_gte=graphene.Float(description="Filter orders with total amount greater than or equal to this value"),
+        total_amount_lte=graphene.Float(description="Filter orders with total amount less than or equal to this value"),
+        order_date_gte=graphene.DateTime(description="Filter orders placed on or after this date"),
+        order_date_lte=graphene.DateTime(description="Filter orders placed on or before this date"),
+        customer_name=graphene.String(description="Filter orders by customer's name (case-insensitive partial match)"),
+        customer_email=graphene.String(description="Filter orders by customer's email (case-insensitive partial match)"),
+        product_name=graphene.String(description="Filter orders by product's name (case-insensitive partial match)"),
+        product_id=graphene.ID(description="Filter orders containing a specific product ID (CHALLENGE)"),
+        contains_product=graphene.String(description="Filter orders containing a specific product (by ID or name)"),
+        customer_id=graphene.ID(description="Filter orders by specific customer ID"),
+        high_value_orders=graphene.Boolean(description="Filter high-value orders (> $500)"),
+        recent_orders=graphene.Boolean(description="Filter orders placed in the last 30 days"),
+        min_products=graphene.Int(description="Filter orders containing at least this many products"),
+        order_value_category=graphene.String(description="Filter by order value category (small, medium, large, enterprise)"),
+        # Pagination
+        limit=graphene.Int(description="Limit the number of results"),
+        offset=graphene.Int(description="Offset for pagination")
+    )
 
     def resolve_all_customers(self, info):
         return Customer.objects.all()
@@ -310,6 +406,116 @@ class Query(graphene.ObjectType):
             return Order.objects.get(pk=id)
         except Order.DoesNotExist:
             return None
+    
+    # NEW: Resolver for filtered_customers
+    def resolve_filtered_customers(self, info, **kwargs):
+        """
+        Custom resolver that manually applies filters to the Customer queryset.
+        
+        This demonstrates how to manually implement filtering logic in resolvers.
+        """
+        queryset = Customer.objects.all()
+        
+        # Apply the CustomerFilter
+        filter_instance = CustomerFilter(kwargs, queryset=queryset)
+        filtered_queryset = filter_instance.qs
+        
+        # Handle pagination
+        limit = kwargs.get('limit')
+        offset = kwargs.get('offset', 0)
+        
+        if offset:
+            filtered_queryset = filtered_queryset[offset:]
+        
+        if limit:
+            filtered_queryset = filtered_queryset[:limit]
+            
+        return filtered_queryset
+    
+    # NEW: Resolver for advanced_filtered_customers  
+    def resolve_advanced_filtered_customers(self, info, **kwargs):
+        """
+        Advanced resolver with ordering and comprehensive filtering.
+        
+        This shows how to use the AdvancedCustomerFilter with ordering capabilities.
+        """
+        queryset = Customer.objects.all()
+        
+        # Apply the AdvancedCustomerFilter
+        filter_instance = AdvancedCustomerFilter(kwargs, queryset=queryset)
+        filtered_queryset = filter_instance.qs
+        
+        # Handle manual ordering if not handled by filter
+        ordering = kwargs.get('ordering')
+        if ordering and not kwargs.get('ordering'):  # If ordering not in filter params
+            try:
+                filtered_queryset = filtered_queryset.order_by(ordering)
+            except Exception:
+                # Invalid ordering field, ignore
+                pass
+        
+        # Handle pagination
+        limit = kwargs.get('limit')
+        offset = kwargs.get('offset', 0)
+        
+        if offset:
+            filtered_queryset = filtered_queryset[offset:]
+            
+        if limit:
+            filtered_queryset = filtered_queryset[:limit]
+            
+        return filtered_queryset
+    
+    # NEW: Resolver for filtered_products
+    def resolve_filtered_products(self, info, **kwargs):
+        """
+        Custom resolver for filtering products.
+        
+        This demonstrates how to apply ProductFilter to the Product queryset.
+        """
+        queryset = Product.objects.all()
+        
+        # Apply the ProductFilter
+        filter_instance = ProductFilter(kwargs, queryset=queryset)
+        filtered_queryset = filter_instance.qs
+        
+        # Handle pagination
+        limit = kwargs.get('limit')
+        offset = kwargs.get('offset', 0)
+        
+        if offset:
+            filtered_queryset = filtered_queryset[offset:]
+        
+        if limit:
+            filtered_queryset = filtered_queryset[:limit]
+            
+        return filtered_queryset
+    
+    # NEW: Resolver for filtered_orders
+    def resolve_filtered_orders(self, info, **kwargs):
+        """
+        Custom resolver for filtering orders.
+        
+        This demonstrates how to apply OrderFilter to the Order queryset,
+        including complex related field filtering.
+        """
+        queryset = Order.objects.all()
+        
+        # Apply the OrderFilter
+        filter_instance = OrderFilter(kwargs, queryset=queryset)
+        filtered_queryset = filter_instance.qs
+        
+        # Handle pagination
+        limit = kwargs.get('limit')
+        offset = kwargs.get('offset', 0)
+        
+        if offset:
+            filtered_queryset = filtered_queryset[offset:]
+        
+        if limit:
+            filtered_queryset = filtered_queryset[:limit]
+            
+        return filtered_queryset
 
 
 # Mutation class
