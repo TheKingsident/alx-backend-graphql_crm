@@ -76,3 +76,69 @@ The log file (`/tmp/customer_cleanup_log.txt`) contains entries like:
 [2024-01-21 02:00:02] Successfully deleted 0 inactive customers
 [2024-01-21 02:00:02] Customer cleanup completed
 ```
+
+## Order Reminders Scripts
+
+### send_order_reminders.py
+A Python script that:
+- Uses the `gql` library to query the GraphQL endpoint for orders placed within the last 7 days
+- Handles CSRF authentication properly for GraphQL requests
+- Logs each order's ID and customer email to `/tmp/order_reminders_log.txt` with timestamps
+- Prints "Order reminders processed!" to the console
+- Includes comprehensive error handling and logging
+
+### order_reminders_crontab.txt
+Contains the crontab entry to run the order reminders script daily at 8:00 AM.
+
+## Setup Instructions for Order Reminders
+
+1. **Make sure the script is executable** (already done):
+   ```bash
+   chmod +x /path/to/crm/cron_jobs/send_order_reminders.py
+   ```
+
+2. **Add the cron job to your crontab**:
+   ```bash
+   crontab -e
+   ```
+   Then add the line from `order_reminders_crontab.txt`:
+   ```
+   0 8 * * * /home/cakemurderer/ALX_Projects/alx_backend_graphql/crm/cron_jobs/send_order_reminders.py
+   ```
+
+3. **Alternative: Load the crontab directly**:
+   ```bash
+   crontab crm/cron_jobs/order_reminders_crontab.txt
+   ```
+
+## Manual Testing for Order Reminders
+
+```bash
+# Test the script
+./crm/cron_jobs/send_order_reminders.py
+
+# Check results
+cat /tmp/order_reminders_log.txt
+```
+
+## Order Reminders Cron Schedule
+
+`0 8 * * *` means:
+- `0` - At minute 0
+- `8` - At hour 8 (8:00 AM)
+- `*` - Every day of month
+- `*` - Every month
+- `*` - Every day of week
+
+So the script runs daily at 8:00 AM.
+
+## Order Reminders Log Format
+
+The log file (`/tmp/order_reminders_log.txt`) contains entries like:
+```
+[2025-07-10 13:41:12] Starting order reminders processing...
+[2025-07-10 13:41:13] Order ID: T3JkZXJUeXBlOjAxYmFkMDg4LWIzYzMtNDIzOC05ZmFhLTk2ZGY1OTExMjY3ZQ==, Customer Email: alice.johnson@example.com
+[2025-07-10 13:41:13] Order reminders processed! Total orders: 1
+```
+
+Note: Order IDs are displayed in GraphQL Relay Global ID format (base64 encoded).
