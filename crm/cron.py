@@ -178,4 +178,4 @@ def main():
     """Main function to run cron jobs"""
     log_crm_heartbeat()
     update_low_stock()
-    generate_crm_report()
+    generate_crm_report_task()

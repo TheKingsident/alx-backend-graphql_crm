@@ -18,12 +18,25 @@ You've successfully set up Celery with Redis as the message broker for your Djan
 - Contains Celery task wrappers for your cron functions
 - `log_crm_heartbeat_task()` - Celery version of heartbeat logging
 - `update_low_stock_task()` - Celery version of low stock updates
+- `generate_crm_report()` - Celery version of CRM report generation
 - `debug_task()` - Simple test task
 
 ### 4. `alx_backend_graphql/settings.py`
 - Added Celery configuration with Redis broker
 - Added Celery Beat schedule for periodic tasks
 - Configured task serialization and timezone settings
+- Added crontab import for advanced scheduling
+
+### 5. `crm/schema.py`
+- Added `CRMStatsType` for aggregated statistics
+- Added `crm_stats` query field to fetch total customers, orders, and revenue
+- Added resolver `resolve_crm_stats()` that uses Django ORM aggregation
+
+### 6. `crm/cron.py`
+- Added `generate_crm_report()` function
+- Uses GraphQL client to query CRM statistics
+- Formats timestamp as `YYYY-MM-DD HH:MM:SS`
+- Updated `main()` function to include report generation
 
 ## Prerequisites
 
@@ -83,27 +96,66 @@ python manage.py runserver
 python manage.py shell
 
 # Import and test tasks
-from crm.tasks import log_crm_heartbeat_task, update_low_stock_task, debug_task
+from crm.tasks import log_crm_heartbeat_task, update_low_stock_task, generate_crm_report, debug_task
 
 # Run tasks asynchronously
 result1 = log_crm_heartbeat_task.delay()
 result2 = update_low_stock_task.delay()
-result3 = debug_task.delay()
+result3 = generate_crm_report.delay()
+result4 = debug_task.delay()
 
 # Check results
 print(result1.get())
 print(result2.get())
 print(result3.get())
+print(result4.get())
 ```
 
 ### Test from Python Script
 ```python
-from crm.tasks import debug_task
+from crm.tasks import debug_task, generate_crm_report
 
 # This will add the task to the queue
-result = debug_task.delay()
-print(f"Task ID: {result.id}")
-print(f"Task Result: {result.get()}")
+result1 = debug_task.delay()
+result2 = generate_crm_report.delay()
+
+print(f"Debug Task ID: {result1.id}")
+print(f"Debug Task Result: {result1.get()}")
+
+print(f"Report Task ID: {result2.id}")
+print(f"Report Task Result: {result2.get()}")
+```
+
+## Testing the CRM Report Feature
+
+### Test CRM Stats GraphQL Query
+```bash
+# Using curl
+curl -X POST http://localhost:8000/graphql/ \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ crmStats { totalCustomers totalOrders totalRevenue } }"}'
+```
+
+### Test CRM Report Generation
+```python
+# From Django shell
+python manage.py shell
+
+# Test the cron function directly
+from crm.cron import generate_crm_report
+generate_crm_report()
+
+# Check the log output
+import subprocess
+subprocess.run(['cat', '/tmp/crm_report_log.txt'])
+```
+
+### Test Celery Task
+```python
+# From Django shell
+from crm.tasks import generate_crm_report
+result = generate_crm_report.delay()
+print(result.get())
 ```
 
 ## Scheduled Tasks
@@ -117,6 +169,12 @@ The following periodic tasks are configured:
 2. **Low Stock Update**: Runs every 12 hours
    - Updates products with stock < 10
    - Logs results to `/tmp/low_stock_updates_log.txt`
+
+3. **CRM Report Generation**: Runs every Monday at 6:00 AM
+   - Generates comprehensive CRM statistics report
+   - Fetches total customers, orders, and revenue via GraphQL
+   - Logs results to `/tmp/crm_report_log.txt`
+   - Uses format: `YYYY-MM-DD HH:MM:SS - Report: X customers, Y orders, Z revenue`
 
 ## Monitoring
 
@@ -146,6 +204,8 @@ celery -A crm inspect registered
 - **Serialization**: JSON
 - **Timezone**: UTC
 - **Task Discovery**: Automatic from all Django apps
+- **Scheduled Tasks**: 3 periodic tasks (heartbeat, low stock update, CRM report)
+- **GraphQL Integration**: CRM stats query with aggregated data
 
 ## Next Steps
 
