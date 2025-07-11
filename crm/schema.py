@@ -223,6 +223,55 @@ class CreateProductMutation(graphene.Mutation):
             )
 
 
+class UpdateLowStockProductsMutation(graphene.Mutation):
+    """
+    Mutation to restock products with low inventory (stock < 10).
+    Increments stock by 10 for all qualifying products.
+    """
+    
+    updated_products = graphene.List(ProductType)
+    success_message = graphene.String()
+    count = graphene.Int()
+
+    def mutate(self, info):
+        try:
+            # Query products with stock < 10
+            low_stock_products = Product.objects.filter(stock__lt=10)
+            
+            if not low_stock_products.exists():
+                return UpdateLowStockProductsMutation(
+                    updated_products=[],
+                    success_message="No products found with low stock (< 10).",
+                    count=0
+                )
+            
+            # Update products by incrementing stock by 10
+            updated_products = []
+            count = 0
+            
+            for product in low_stock_products:
+                old_stock = product.stock
+                product.stock += 10
+                product.save(update_fields=['stock'])
+                updated_products.append(product)
+                count += 1
+            
+            success_message = f"Successfully restocked {count} products. Added 10 units to each product with stock < 10."
+            
+            return UpdateLowStockProductsMutation(
+                updated_products=updated_products,
+                success_message=success_message,
+                count=count
+            )
+            
+        except Exception as e:
+            return UpdateLowStockProductsMutation(
+                updated_products=[],
+                success_message=f"Error during restocking: {str(e)}",
+                count=0
+            )
+
+
 class CreateOrderMutation(graphene.Mutation):
     class Arguments:
         input = OrderInput(required=True)
@@ -532,6 +581,6 @@ class Mutation(graphene.ObjectType):
     bulk_create_customers = BulkCreateCustomersMutation.Field()
     create_product = CreateProductMutation.Field()
     create_order = CreateOrderMutation.Field()
-
+    update_low_stock_products = UpdateLowStockProductsMutation.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
