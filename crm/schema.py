@@ -8,6 +8,13 @@ from .models import Customer, Product, Order
 from .filters import CustomerFilter, AdvancedCustomerFilter, ProductFilter, AdvancedProductFilter, OrderFilter, AdvancedOrderFilter
 
 
+# CRM Statistics Type
+class CRMStatsType(graphene.ObjectType):
+    total_customers = graphene.Int()
+    total_orders = graphene.Int()
+    total_revenue = graphene.Float()
+
+
 # Django Object Types
 class CustomerType(DjangoObjectType):
     class Meta:
@@ -340,6 +347,9 @@ class Query(graphene.ObjectType):
     # Health check field
     hello = graphene.String(default_value="Hello from CRM!")
     
+    # CRM Statistics
+    crm_stats = graphene.Field(CRMStatsType)
+    
     # Basic queries (existing)
     all_customers = graphene.List(CustomerType)
     all_products = graphene.List(ProductType)
@@ -435,6 +445,20 @@ class Query(graphene.ObjectType):
     def resolve_hello(self, info):
         """Health check resolver that confirms CRM GraphQL is working"""
         return "Hello from CRM GraphQL! System is operational."
+
+    def resolve_crm_stats(self, info):
+        """Resolver for CRM statistics"""
+        from django.db.models import Sum
+        
+        total_customers = Customer.objects.count()
+        total_orders = Order.objects.count()
+        total_revenue = Order.objects.aggregate(total=Sum('total_amount'))['total'] or 0.0
+        
+        return CRMStatsType(
+            total_customers=total_customers,
+            total_orders=total_orders,
+            total_revenue=float(total_revenue)
+        )
 
     def resolve_all_customers(self, info):
         return Customer.objects.all()
