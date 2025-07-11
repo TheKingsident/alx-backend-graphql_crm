@@ -288,6 +288,9 @@ class CreateOrderMutation(graphene.Mutation):
 
 # Query class
 class Query(graphene.ObjectType):
+    # Health check field
+    hello = graphene.String(default_value="Hello from CRM!")
+    
     # Basic queries (existing)
     all_customers = graphene.List(CustomerType)
     all_products = graphene.List(ProductType)
@@ -379,6 +382,10 @@ class Query(graphene.ObjectType):
         limit=graphene.Int(description="Limit the number of results"),
         offset=graphene.Int(description="Offset for pagination")
     )
+
+    def resolve_hello(self, info):
+        """Health check resolver that confirms CRM GraphQL is working"""
+        return "Hello from CRM GraphQL! System is operational."
 
     def resolve_all_customers(self, info):
         return Customer.objects.all()

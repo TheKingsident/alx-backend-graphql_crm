@@ -1,6 +1,8 @@
 from datetime import datetime
 import requests
 import json
+from gql import gql, Client
+from gql.transport.requests import RequestsHTTPTransport
 
 def log_crm_heartbeat():
     """Log a heartbeat to confirm CRM application's health"""
@@ -11,39 +13,35 @@ def log_crm_heartbeat():
     
     # Optionally, query the GraphQL hello field to verify endpoint responsiveness
     try:
-        # GraphQL hello query
-        query = {
-            "query": "{ hello }"
-        }
-        
-        # Get CSRF token first
+        # Setup GraphQL client with CSRF handling
         session = requests.Session()
         get_response = session.get("http://localhost:8000/graphql/")
         csrf_token = session.cookies.get('csrftoken')
         
-        # Headers for the GraphQL request
         headers = {
-            'Content-Type': 'application/json',
             'X-CSRFToken': csrf_token,
             'Referer': 'http://localhost:8000/graphql/',
         }
         
-        # Make the GraphQL request
-        response = session.post(
-            "http://localhost:8000/graphql/",
-            json=query,
+        transport = RequestsHTTPTransport(
+            url="http://localhost:8000/graphql/",
+            use_json=True,
             headers=headers,
-            timeout=5
+            cookies=session.cookies
         )
         
-        if response.status_code == 200:
-            result = response.json()
-            if 'data' in result and 'hello' in result['data']:
-                heartbeat_message += f" - GraphQL endpoint responsive: {result['data']['hello']}"
-            else:
-                heartbeat_message += " - GraphQL endpoint reachable but no hello field"
+        client = Client(transport=transport, fetch_schema_from_transport=False)
+        
+        # GraphQL hello query using gql to check endpoint health
+        query = gql("{ hello }")
+        
+        # Execute the query
+        result = client.execute(query)
+        
+        if result and 'hello' in result:
+            heartbeat_message += f" - GraphQL endpoint responsive: {result['hello']}"
         else:
-            heartbeat_message += f" - GraphQL endpoint error: HTTP {response.status_code}"
+            heartbeat_message += " - GraphQL endpoint reachable but no hello response"
             
     except Exception as e:
         heartbeat_message += f" - GraphQL check failed: {str(e)}"
