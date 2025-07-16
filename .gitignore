@@ -4,3 +4,5 @@ __pycache__/
 *.pyo
 *.pyd
 *.sqlite3
+CV_WORK_EXPERIENCE.md
+.env.example
